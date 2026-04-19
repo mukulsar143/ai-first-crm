@@ -24,14 +24,17 @@ A professional, enterprise-grade CRM interface designed for Pharmaceutical and M
 - Node.js 18+
 - A [Groq API Key](https://console.groq.com/)
 
-### 2. Backend Setup
+### 2. Backend Setup (Render Deployment)
+- **Runtime**: Python 3.10.13 (via `backend/runtime.txt`)
+- **Build Command**: `cd backend && pip install -r requirements.txt`
+- **Start Command**: `cd backend && uvicorn app.main:app --host 0.0.0.0 --port 10000`
+
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env and add your GROQ_API_KEY
 uvicorn app.main:app --reload
 ```
 

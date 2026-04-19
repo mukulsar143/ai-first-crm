@@ -6,4 +6,3 @@ pydantic-settings
 langchain
 langchain-groq
 python-dotenv
-pytest
