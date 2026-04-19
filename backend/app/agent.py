@@ -1,8 +1,8 @@
 import os
 import json
 import logging
+import http.client
 from typing import Optional, Dict, Any
-from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 from .database import SessionLocal
 from . import models
@@ -12,16 +12,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class InteractionExtraction(BaseModel):
-    doctor_name: str = Field(description="The name of the HCP/Doctor")
-    interaction_type: str = Field(description="The type of interaction (Meeting, Call, Email, etc.)")
-    summary: str = Field(description="A concise summary of the discussion")
-    sentiment: str = Field(description="The sentiment of the doctor (Positive, Neutral, Negative)")
-    key_topics: str = Field(description="Comma-separated list of key topics discussed")
-    outcome: Optional[str] = Field(None, description="The outcome or follow-up action")
+    doctor_name: str
+    interaction_type: str
+    summary: str
+    sentiment: str
+    key_topics: str
+    outcome: Optional[str] = None
 
 def extract_interaction_sync(text: str) -> Optional[Dict[str, Any]]:
     """
-    Uses Groq LLM to extract structured data from natural language interaction descriptions.
+    Uses raw Groq API call to extract structured data from natural language.
+    Eliminates LangChain dependency for minimal Render footprint.
     """
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -29,12 +30,8 @@ def extract_interaction_sync(text: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        llm = ChatGroq(
-            model_name="llama-3.3-70b-versatile",
-            groq_api_key=api_key,
-            temperature=0.1,
-        )
-
+        conn = http.client.HTTPSConnection("api.groq.com")
+        
         prompt = f"""
         Extract structured interaction data from the following text:
         "{text}"
@@ -46,40 +43,44 @@ def extract_interaction_sync(text: str) -> Optional[Dict[str, Any]]:
         - sentiment (Strictly one of: Positive, Neutral, Negative)
         - key_topics (string list)
         - outcome (optional)
-
-        Example Output:
-        {{
-            "doctor_name": "Dr. Smith",
-            "interaction_type": "Meeting",
-            "summary": "Discussed clinical trials.",
-            "sentiment": "Positive",
-            "key_topics": "Trial A, Safety data",
-            "outcome": "Schedule follow-up"
-        }}
         """
 
-        response = llm.invoke(prompt)
+        payload = json.dumps({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"}
+        })
+
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+
+        conn.request("POST", "/openai/v1/chat/completions", payload, headers)
+        res = conn.getresponse()
+        data = res.read()
         
-        # Robust JSON extraction
-        content = response.content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
+        result_json = json.loads(data.decode("utf-8"))
+        content = result_json['choices'][0]['message']['content']
         
-        data = json.loads(content)
+        extracted_data = json.loads(content)
         
         # Basic validation
         valid_types = ['Meeting', 'Call', 'Email']
-        if data.get('interaction_type') not in valid_types:
-            data['interaction_type'] = 'Meeting'
+        if extracted_data.get('interaction_type') not in valid_types:
+            extracted_data['interaction_type'] = 'Meeting'
             
         valid_sentiments = ['Positive', 'Neutral', 'Negative']
-        if data.get('sentiment') not in valid_sentiments:
-            data['sentiment'] = 'Neutral'
+        if extracted_data.get('sentiment') not in valid_sentiments:
+            extracted_data['sentiment'] = 'Neutral'
             
-        return data
+        return extracted_data
 
     except Exception as e:
-        logger.error(f"LLM Extraction failed: {str(e)}")
+        logger.error(f"Raw LLM Extraction failed: {str(e)}")
         return None
 
 async def run_agent(text: str) -> Dict[str, Any]:
@@ -91,7 +92,6 @@ async def run_agent(text: str) -> Dict[str, Any]:
     if not extracted_data:
         return {"response": "I couldn't extract the details. Could you please provide more information?", "success": False}
 
-    # Save to Database
     db = SessionLocal()
     try:
         db_interaction = models.Interaction(
