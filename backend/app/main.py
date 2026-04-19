@@ -8,11 +8,12 @@ load_dotenv()
 from . import models, schemas, database
 from .database import engine, get_db
 
-# Create database tables
+# Create database tables at startup for SQLite stability
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI-First CRM HCP API")
 
+# Permissive CORS for cross-domain communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
