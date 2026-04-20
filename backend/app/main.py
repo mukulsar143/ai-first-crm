@@ -6,7 +6,8 @@ import os
 
 load_dotenv()
 from . import models, schemas, database
-from .database import engine, get_db
+from .admin import create_default_admin
+from .database import SessionLocal, engine, get_db
 
 # Create database tables at startup for SQLite stability
 models.Base.metadata.create_all(bind=engine)
@@ -21,6 +22,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def startup_event():
+    db = SessionLocal()
+    try:
+        create_default_admin(db)
+    finally:
+        db.close()
 
 @app.get("/")
 def read_root():

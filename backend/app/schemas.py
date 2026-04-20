@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 
 class InteractionBase(BaseModel):
@@ -29,11 +29,11 @@ class InteractionResponse(InteractionBase):
     updated_at: Optional[datetime] = None
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class APIResponse(BaseModel):
     success: bool
-    data: Optional[dict | list | InteractionResponse] = None
+    data: Optional[Union[dict, list, InteractionResponse]] = None
     message: Optional[str] = None
 
 class ChatRequest(BaseModel):
